@@ -58,7 +58,7 @@ int gps_getData()
     byte* buffer;
     if(rc_uart_bytes_available(GPS_BUS))
     {
-        rc_read_bytes(GPS_BUS, buffer, PAYLOAD_SIZE);
+        rc_read_bytes(GPS_BUS, buffer, 1);
 
         __gps_parse(gps_data)
     } 
