@@ -9,12 +9,16 @@
 #include <unistd.h>
 
 #include <rc/time.h>
+#include <rc/uart.h>
 
 #include <naza_gps.h>
 #include <serial_com.h>
 #include <state_estimator.h>
 
+#define BAUDRATE    115200
+#define TIMEOUT_S   .5
 #define PAYLOAD_SIZE 64
+
 #define GPS_STARTBYTE1 0x55       ///< first start byte
 #define GPS_STARTBYTE2 0xAA       ///< second start byte
 #define PAYLOAD_GPS 0x10          ///< gps message byte
@@ -22,10 +26,7 @@
 #define PAYLOAD_COMPASS 0x20      ///< compass message byte
 #define PAYLOAD_COMPASS_LEN 0x06  ///< compass message length
 
-unsigned char payload[PAYLOAD_SIZE];  // TODO: static? for each of these variables...
-unsigned char cs1, cs2;               ///< checksum 1 and 2
-int msgId, msgLen;
-int gps_portID;
+int bus;
 
 gps_data_t gps_data;
 
@@ -40,9 +41,8 @@ static int16_t __decodeShort(uint8_t idx, uint8_t mask);
 
 int gps_init()
 {
-    int baudRate = 115200;
-    gps_portID = serial_open("/dev/ttyS2", baudRate, 0);  // TODO: Add serial port to settings file
-    if (gps_portID == -1)
+    bus = 2;  // TODO: Add serial port to settings file
+    if (rc_uart_init(bus, BAUDRATE, TIMEOUT_S, 0, 1, 0))
     {
         printf("Failed to open Serial Port\n");
         return -1;
@@ -56,12 +56,13 @@ int gps_init()
 
 int gps_getData()
 {
-    unsigned char buffer;
-
-    while (read(gps_portID, &buffer, 1) > 0)
+    uint8_t* buffer;
+    if(rc_uart_bytes_available(bus))
     {
-        __gps_parse(buffer);
-    }
+        rc_read_bytes(bus, buffer, PAYLOAD);
+
+        __gps_parse(gps_data)
+    } 
 
     if (gps_data.gps_valid)
     {
