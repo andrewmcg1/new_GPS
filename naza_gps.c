@@ -17,8 +17,11 @@
 
 #define BAUDRATE    115200
 #define TIMEOUT_S   .5
-#define PAYLOAD_SIZE 64
+
 #define GPS_BUS 2
+
+#define GPS_PAYLOAD_SIZE 58
+#define COM_PAYLOAD_SIZE 58
 
 #define GPS_STARTBYTE1 0x55       ///< first start byte
 #define GPS_STARTBYTE2 0xAA       ///< second start byte
@@ -55,7 +58,7 @@ int gps_getData()
     byte* buffer;
     if(rc_uart_bytes_available(GPS_BUS))
     {
-        rc_read_bytes(GPS_BUS, buffer, PAYLOAD_SIZE);
+        rc_read_bytes(GPS_BUS, buffer, 1);
 
         __gps_parse(gps_data)
     } 
@@ -156,42 +159,50 @@ static int __gps_parse(const int input)
 
 static void __gps_decode()
 {
+    struct_to_int gps_union;
     static int16_t magXMax, magXMin, magYMax, magYMin;
 
     if (msgId == PAYLOAD_GPS)
     {
-        uint8_t mask = payload[55];
-        uint32_t time = __decodeLong(0, mask);
-        gps_data.second = time & 0b00111111;
-        time >>= 6;
-        gps_data.minute = time & 0b00111111;
-        time >>= 6;
-        gps_data.hour = time & 0b00001111;
-        time >>= 4;
-        gps_data.day = time & 0b00011111;
-        time >>= 5;
-        if (gps_data.hour > 7) gps_data.day++;
-        gps_data.month = time & 0b00001111;
-        time >>= 4;
-        gps_data.year = time & 0b01111111;
+        uint8_t mask = 0;
+        uint8_t mask_bits[8];
+        uint8_t byte53_0, byte53_1, byte53_2, byte53_3;
+        uint8_t byte61_4, byte61_5, byte61_6, byte61_7;
 
-        gps_data.lla.lon = (double)__decodeLong(4, mask) / 10000000;
-        gps_data.lla.lat = (double)__decodeLong(8, mask) / 10000000;
-        gps_data.lla.alt = (double)__decodeLong(12, mask) / 1000;
+        byte53_0 = (gps_data.numberOfSatelites >> 7); 
+        byte53_1 = (gps_data.numberOfSatelites >> 6) & 0x02; 
+        byte53_2 = (gps_data.numberOfSatelites >> 5) & 0x04;
+        byte53_3 = (gps_data.numberOfSatelites >> 4) & 0x08;
 
-        double nVel = (double)__decodeLong(28, mask) / 100;
-        double eVel = (double)__decodeLong(32, mask) / 100;
-        gps_data.spd = sqrt(nVel * nVel + eVel * eVel);
-        gps_data.cog = atan2(eVel, nVel) * 180.0 / M_PI;
-        if (gps_data.cog < 0) gps_data.cog += 360.0;
-        gps_data.gpsVsi = -(double)__decodeLong(36, mask) / 100;
-        gps_data.vdop = (double)__decodeShort(42, mask) / 100;
-        double ndop = (double)__decodeShort(44, mask) / 100;
-        double edop = (double)__decodeShort(46, mask) / 100;
-        gps_data.hdop = sqrt(ndop * ndop + edop * edop);
-        gps_data.sat = payload[48];
-        uint8_t fixType = payload[50] ^ mask;
-        uint8_t fixFlags = payload[52] ^ mask;
+        byte61_4 = (gps_data.sequenceNumber[0] >> 3) & 0x10;
+        byte61_5 = (gps_data.sequenceNumber[0] >> 2) & 0x20;
+        byte61_6 = (gps_data.sequenceNumber[0] >> 1) & 0x40;
+        byte61_7 = (gps_data.sequenceNumber[0]) & 0x40;
+        
+        mask_bits[0] = byte53_0 ^ byte61_4;
+        mask_bits[1] = byte53_1 ^ byte61_5;
+        mask_bits[2] = byte53_2 ^ byte61_6;
+        mask_bits[3] = byte53_3 ^ byte61_7 ^ byte53_0;
+        mask_bits[4] = byte53_1;
+        mask_bits[4] = byte53_2;
+        mask_bits[4] = byte53_3;
+        mask_bits[4] = byte53_0 ^ byte61_4;
+
+        for(int i = 0; i < 8; i++)
+        {
+            mask &= mask_bits[i];
+        }
+
+        gps_union.gps_structure = gps_data;
+        
+        for(int i = 0; i < GPS_PAYLOAD_SIZE; i++)
+            gps_union.struct_as_int[i] ^= mask;
+
+        gps_data = gps_union.structure;
+
+
+
+
         switch (fixType)
         {
             case 2:
