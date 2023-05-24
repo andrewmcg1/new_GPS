@@ -18,6 +18,7 @@
 #define BAUDRATE    115200
 #define TIMEOUT_S   .5
 #define PAYLOAD_SIZE 64
+#define GPS_BUS 2
 
 #define GPS_STARTBYTE1 0x55       ///< first start byte
 #define GPS_STARTBYTE2 0xAA       ///< second start byte
@@ -25,8 +26,6 @@
 #define PAYLOAD_GPS_LEN 0x3A      ///< gps message length
 #define PAYLOAD_COMPASS 0x20      ///< compass message byte
 #define PAYLOAD_COMPASS_LEN 0x06  ///< compass message length
-
-int bus;
 
 gps_data_t gps_data;
 
@@ -36,13 +35,10 @@ gps_data_t gps_data;
 static int __gps_parse(const int input);
 static void __updateCS(const int input);
 static void __gps_decode();
-static int32_t __decodeLong(uint8_t idx, uint8_t mask);
-static int16_t __decodeShort(uint8_t idx, uint8_t mask);
 
 int gps_init()
 {
-    bus = 2;  // TODO: Add serial port to settings file
-    if (rc_uart_init(bus, BAUDRATE, TIMEOUT_S, 0, 1, 0))
+    if (rc_uart_init(GPS_BUS, BAUDRATE, TIMEOUT_S, 0, 1, 0))
     {
         printf("Failed to open Serial Port\n");
         return -1;
@@ -56,10 +52,10 @@ int gps_init()
 
 int gps_getData()
 {
-    uint8_t* buffer;
-    if(rc_uart_bytes_available(bus))
+    byte* buffer;
+    if(rc_uart_bytes_available(GPS_BUS))
     {
-        rc_read_bytes(bus, buffer, PAYLOAD);
+        rc_read_bytes(GPS_BUS, buffer, PAYLOAD_SIZE);
 
         __gps_parse(gps_data)
     } 
@@ -79,68 +75,83 @@ int gps_getData()
 
 static int __gps_parse(const int input)
 {
-    static int seq = 0, cnt = 0;
+    static int count;
+    uint8_t checkSum[2];
+    static ParseState state = START_BYTE_1;
+    static byte messageID;
+    static byte messageLength;
+    static unsigned char payload[PAYLOAD_SIZE];
 
-    if (seq == 0 && input == GPS_STARTBYTE1)
+    switch (state)
     {
-        ++seq;
-    }
-    else if (seq == 1 && input == GPS_STARTBYTE2)
-    {
-        cs1 = 0;
-        cs2 = 0;
-        ++seq;
-    }
-    else if (seq == 2)
-    {
-        msgId = input;
-        __updateCS(input);
-        ++seq;
-    }
-    else if (seq == 3 && ((msgId == PAYLOAD_GPS && input == PAYLOAD_GPS_LEN) ||
-                             (msgId == PAYLOAD_COMPASS && input == PAYLOAD_COMPASS_LEN)))
-    {
-        msgLen = input;
-        cnt = 0;
-        __updateCS(input);
-        ++seq;
-    }
-    else if (seq == 4)
-    {
-        payload[cnt++] = input;
-        __updateCS(input);
-        if (cnt >= msgLen)
+    case START_BYTE_1:
+        if (input == GPS_STARTBYTE1)
+            state = START_BYTE_2;
+        break;
+        
+    case START_BYTE_2:
+        if (input == GPS_STARTBYTE2)
         {
-            ++seq;
+            state = MESSAGE_ID;
+            checkSum[0] = 0;
+            checkSum[1] = 0;
         }
-    }
-    else if (seq == 5 && input == cs1)
-    {
-        ++seq;
-    }
-    else if (seq == 6 && input == cs2)
-    {
-        ++seq;
-    }
-    else
-    {
-        seq = 0;
-        return -1;
-    }
+        else
+            state = START_BYTE_1;
+        break;
+        
+    case MESSAGE_ID:
+        messageID = input;
+        checkSum[0] += input;
+        checkSum[1] += checkSum[0];
+        state = VALIDATE_PAYLOAD;
+        break;
+        
+    case VALIDATE_PAYLOAD:
+        if ((messageID == PAYLOAD_GPS && input == PAYLOAD_GPS_LEN)
+            || (messageID == PAYLOAD_COMPAS && input == PAYLOAD_COMPASS_LEN))
+        {
+            messageLength = input;
+            count = 0;
+            checkSum[0] += input;
+            checkSum[1] += checkSum[0];
+            state = RECIEVE_PAYLOAD;
+        }
+        else
+            state = START_BYTE_1;
+        break;
+        
+    case RECIEVE_PAYLOAD:
+        payload[count++] = input;
+        checkSum[0] += input;
+        checkSum[1] += checkSum[0];
+        if (count >= messageLength)
+        {
+            state = CHECKSUM_1;
+        }
+        break;
 
-    // Full message read into buffer, both checksums good
-    if (seq == 7)
-    {
-        seq = 0;
+    case CHECKSUM_1:
+        if (input == checkSum[0])
+            state = CHECKSUM_2;
+        else
+            state = START_BYTE_1;
+        break;
+
+    case CHECKSUM_2:
+        if (input == checkSum[1])
+            state = DECODE_PAYLOAD;
+        else
+            state = START_BYTE_1;
+        break;
+
+    case DECODE_PAYLOAD:
+        gps_data = *(gps_data_t*)payload;
+        state = START_BYTE_1;
         __gps_decode();
     }
+    
     return 0;
-}
-
-static void __updateCS(const int input)
-{
-    cs1 += input;
-    cs2 += cs1;
 }
 
 static void __gps_decode()
@@ -226,34 +237,4 @@ static void __gps_decode()
         }
     }
     return;
-}
-
-static int32_t __decodeLong(uint8_t idx, uint8_t mask)
-{
-    union {
-        uint32_t l;
-        uint8_t b[4];
-    } val;
-
-    for (int i = 0; i < 4; i++)
-    {
-        val.b[i] = payload[idx + i] ^ mask;
-    }
-
-    return val.l;
-}
-
-static int16_t __decodeShort(uint8_t idx, uint8_t mask)
-{
-    union {
-        uint16_t s;
-        uint8_t b[2];
-    } val;
-
-    for (int i = 0; i < 2; i++)
-    {
-        val.b[i] = payload[idx + i] ^ mask;
-    }
-
-    return val.s;
 }

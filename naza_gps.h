@@ -20,21 +20,20 @@ typedef uint8_t byte;
 
 #include <stdint.h>
 
-#include <coordinates.h>
-
 enum _ParseState
 {
     START_BYTE_1,
     START_BYTE_2,
     MESSAGE_ID,
+    VALIDATE_PAYLOAD,
     RECIEVE_PAYLOAD,
-    DECODE_PAYLOAD,
     CHECKSUM_1,
-    CHECKSUM_2
+    CHECKSUM_2,
+    DECODE_PAYLOAD
 };
 typedef _ParseState ParseState
 
-typedef struct gps_data_t
+typedef struct __attribute__ ((packed)) gps_data_t
 {
     byte dateAndTime[4];
     byte longitude[4];
@@ -61,3 +60,6 @@ typedef struct gps_data_t
 } gps_data_t;
 
 extern gps_data_t gps_data;
+
+int gps_init();
+int gps_getData();
