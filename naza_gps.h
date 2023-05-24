@@ -1,17 +1,4 @@
-/**
- * <naza_gps.h>
- *
- * @brief Data structurs and functions to obtain gps readings from DJI Naza V2 Gps
- *
- * Development for this module is based on <a
- * href="https://www.rcgroups.com/forums/showthread.php?1995704-DJI-NAZA-GPS-communication-protocol-NazaDecoder-Arduino-library"
- * target="_blank">this forum post.</a>
- *
- * @author Glen Haggin (ghaggin@umich.edu)
- *
- * @addtogroup NazaGps
- * @{
- */
+
 
 typedef uint8_t byte;
 

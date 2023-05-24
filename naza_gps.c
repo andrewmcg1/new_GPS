@@ -150,7 +150,7 @@ static int __gps_parse(const int input)
         state = START_BYTE_1;
         __gps_decode();
     }
-    
+
     return 0;
 }
 
