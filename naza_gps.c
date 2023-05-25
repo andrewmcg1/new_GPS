@@ -201,11 +201,11 @@ static void __gps_decode(unsigned char messageID)
 {
     struct_to_int gps_union;
     static int16_t magXMax, magXMin, magYMax, magYMin;
+    uint8_t mask = 0;
+    uint8_t mask_bits[8];
 
     if (messageID == PAYLOAD_GPS)
     {
-        uint8_t mask = 0;
-        uint8_t mask_bits[8];
         uint8_t byte53_0, byte53_1, byte53_2, byte53_3;
         uint8_t byte61_4, byte61_5, byte61_6, byte61_7;
 
@@ -247,9 +247,6 @@ static void __gps_decode(unsigned char messageID)
     }
     else if (messageID == PAYLOAD_COMPASS)
     {
-        uint8_t mask = 0;
-        uint8_t mask_bits[8];
-
         uint8_t byte9_0, byte9_1, byte9_2, byte9_3;
         uint8_t byte9_4, byte9_5, byte9_6, byte9_7;
 
