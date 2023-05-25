@@ -5,10 +5,10 @@
 
 enum _FixType
 {
-    NO_FIX,
-    FIX_2D,
-    FIX_3D,
-    FIX_DGPS
+    NO_FIX = 0,
+    FIX_2D = 2,
+    FIX_3D = 3,
+    FIX_DGPS = 4;
 };
 typedef enum _FixType FixType;
 

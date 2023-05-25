@@ -70,6 +70,7 @@ typedef union struct_to_int
 gps_data_t gps_data;
 
 RawGPSData gps_data_raw;
+RawCompassData compass_data_raw;
 
 /**
  * Functions only to be used locally
@@ -208,15 +209,15 @@ static void __gps_decode(unsigned char messageID)
         uint8_t byte53_0, byte53_1, byte53_2, byte53_3;
         uint8_t byte61_4, byte61_5, byte61_6, byte61_7;
 
-        byte53_0 = (gps_data.numberOfSatelites >> 7); 
-        byte53_1 = (gps_data.numberOfSatelites >> 6) & 0x02; 
-        byte53_2 = (gps_data.numberOfSatelites >> 5) & 0x04;
-        byte53_3 = (gps_data.numberOfSatelites >> 4) & 0x08;
+        byte53_0 = (gps_data_raw.numberOfSatelites >> 7); 
+        byte53_1 = (gps_data_raw.numberOfSatelites >> 6) & 0x02; 
+        byte53_2 = (gps_data_raw.numberOfSatelites >> 5) & 0x04;
+        byte53_3 = (gps_data_raw.numberOfSatelites >> 4) & 0x08;
 
-        byte61_4 = (gps_data.sequenceNumber[0] >> 3) & 0x10;
-        byte61_5 = (gps_data.sequenceNumber[0] >> 2) & 0x20;
-        byte61_6 = (gps_data.sequenceNumber[0] >> 1) & 0x40;
-        byte61_7 = (gps_data.sequenceNumber[0]) & 0x40;
+        byte61_4 = (gps_data_raw.sequenceNumber[0] >> 3) & 0x10;
+        byte61_5 = (gps_data_raw.sequenceNumber[0] >> 2) & 0x20;
+        byte61_6 = (gps_data_raw.sequenceNumber[0] >> 1) & 0x40;
+        byte61_7 = (gps_data_raw.sequenceNumber[0]) & 0x40;
         
         mask_bits[0] = byte53_0 ^ byte61_4;
         mask_bits[1] = byte53_1 ^ byte61_5;
@@ -232,19 +233,50 @@ static void __gps_decode(unsigned char messageID)
             mask &= mask_bits[i];
         }
 
-        gps_union.gps_structure = gps_data;
+        gps_union.gps_structure = gps_data_raw;
         
         for(int i = 0; i < GPS_PAYLOAD_LENGTH; i++)
             gps_union.struct_as_int[i] ^= mask;
 
-        gps_data = gps_union.structure;
+        gps_data_raw = gps_union.structure;
 
-        gps_data.sat ^= mask;
-        gps_data.unknown2 ^= mask;
-        gps_data.sequence ^= mask;
+        gps_data_raw.sat ^= mask;
+        gps_data_raw.unknown2 ^= mask;
+        gps_data_raw.sequence ^= (mask << 8) & mask;
 
+    }
+    else if (messageID == PAYLOAD_COMPASS)
+    {
+        uint8_t mask = 0;
+        uint8_t mask_bits[8];
 
-        switch (fixType)
+        uint8_t byte9_0, byte9_1, byte9_2, byte9_3;
+        uint8_t byte9_4, byte9_5, byte9_6, byte9_7;
+
+        maks_bits[0] = byte9_0 ^ byte9_4;
+        maks_bits[1] = byte9_1 ^ byte9_5;
+        maks_bits[2] = byte9_2 ^ byte9_6;
+        maks_bits[3] = byte9_3 ^ byte9_7 ^ byte9_0;
+        maks_bits[4] = byte9_1;
+        maks_bits[5] = byte9_2;
+        maks_bits[6] = byte9_3;
+        maks_bits[7] = byte9_4 ^ byte9_0;
+
+        gps_union.gps_structure = compass_data_raw;
+        
+        for(int i = 0; i < GPS_PAYLOAD_LENGTH; i++)
+            gps_union.struct_as_int[i] ^= mask;
+
+        compass_data_raw = gps_union.structure;
+
+        compass_data_raw.z_vector ^= (mask << 8);
+    }
+    return;
+}
+
+int convert_gps_raw_to_final()
+{
+    switch (fixType)
         {
             case 2:
                 gps_data.fix = FIX_2D;
@@ -269,14 +301,11 @@ static void __gps_decode(unsigned char messageID)
 
         // Check if gps is valid (> 4 satelites for 3D)
         gps_data.gps_valid = (gps_data.sat >= 4);
-    }
-    else if (messageID == PAYLOAD_COMPASS)
-    {
-        uint8_t mask = payload[4];
-        mask = (((mask ^ (mask >> 4)) & 0x0F) | ((mask << 3) & 0xF0)) ^
-               (((mask & 0x01) << 3) | ((mask & 0x01) << 7));
-        int16_t x = __decodeShort(0, mask);
-        int16_t y = __decodeShort(2, mask);
+
+
+
+        // Compass data
+
         if (x > magXMax) magXMax = x;
         if (x < magXMin) magXMin = x;
         if (y > magYMax) magYMax = y;
@@ -286,7 +315,14 @@ static void __gps_decode(unsigned char messageID)
         if (gps_data.headingNc < 0)
         {
             gps_data.headingNc += 360.0;
-        }
-    }
-    return;
+        }   
+
+
+
+
+
+
+
+
+
 }
