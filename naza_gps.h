@@ -8,7 +8,7 @@ enum _FixType
     NO_FIX = 0,
     FIX_2D = 2,
     FIX_3D = 3,
-    FIX_DGPS = 4;
+    FIX_DGPS = 4,
 };
 typedef enum _FixType FixType;
 
@@ -27,10 +27,12 @@ typedef enum _ParseState ParseState;
 
 typedef struct gps_data_t
 {
+    /*
     lla_t lla;
     ned_waypoint_t ned;
+    */
     double spd;        ///< speed in m/s
-    fixType_t fix;     ///< fix type
+    FixType fix;     ///< fix type
     uint8_t sat;       ///< number of satellites
     double headingNc;  ///< heading (not tilt compensated) in degrees
     double cog;        ///< course over ground
@@ -52,3 +54,5 @@ extern gps_data_t gps_data;
 
 int gps_init();
 int gps_getData();
+
+#endif
