@@ -70,6 +70,7 @@ typedef union struct_to_int
 gps_data_t gps_data;
 
 RawGPSData gps_data_raw;
+RawCompassData compass_data_raw;
 
 /**
  * Functions only to be used locally
@@ -188,7 +189,10 @@ static int __gps_parse(const int input)
         break;
 
     case DECODE_PAYLOAD:
-        gps_data_raw = *(gps_data_t*)payload;
+        if (messageID == PAYLOAD_GPS)
+            gps_data_raw = *(RawGPSData*)payload;
+        else if (messageID == PAYLOAD_COMPASS)
+            compass_data_raw = *(RawCompassData*)payload;
         parseState = START_BYTE_1;
         __gps_decode(messageID);
     }
@@ -238,26 +242,6 @@ static void __gps_decode(unsigned char messageID)
             gps_union.struct_as_int[i] ^= mask;
 
         gps_data = gps_union.structure;
-
-        
-        if (gps_data_raw.fixType)
-
-        switch (fixType)
-        {
-            case 2:
-                gps_data.fix = FIX_2D;
-                break;
-            case 3:
-                gps_data.fix = FIX_3D;
-                break;
-            default:
-                gps_data.fix = NO_FIX;
-                break;
-        }
-        if ((gps_data.fix != NO_FIX) && (fixFlags & 0x02))
-        {
-            gps_data.fix = FIX_DGPS;
-        }
 
         // Convert current location to north east down coordinates;
         gps_data.ned = lla2ned(&gps_data.lla);
