@@ -12,32 +12,71 @@
 #include <rc/uart.h>
 
 #include <naza_gps.h>
-#include <serial_com.h>
-#include <state_estimator.h>
 
 #define BAUDRATE    115200
 #define TIMEOUT_S   .5
 
 #define GPS_BUS 2
 
-#define GPS_PAYLOAD_SIZE 58
-#define COM_PAYLOAD_SIZE 58
+#define PAYLOAD_SIZE 64
+#define GPS_PAYLOAD_LENGTH 58
+#define COMPASS_PAYLOAD_LENGTH
 
 #define GPS_STARTBYTE1 0x55       ///< first start byte
 #define GPS_STARTBYTE2 0xAA       ///< second start byte
 #define PAYLOAD_GPS 0x10          ///< gps message byte
-#define PAYLOAD_GPS_LEN 0x3A      ///< gps message length
 #define PAYLOAD_COMPASS 0x20      ///< compass message byte
-#define PAYLOAD_COMPASS_LEN 0x06  ///< compass message length
+
+typedef struct RawGPSData
+{
+    long int dateAndTime;
+    long int longitude;
+    long int latitude;
+    long int altitude;
+    long int horrizontalAccuracyEstimate;
+    long int verticalAccuracyEstimate;
+    long int unknown1;
+    long int NEDNorthVelocity;
+    long int NEDEashVelocity;
+    long int NEDDownVelocity;
+    short int positionDOP;
+    short int verticalDOP;
+    short int northingDOP;
+    short int eastingDOP;
+    unsigned char numberOfSatalites;
+    unsigned char unknown2;
+    unsigned char fixType;
+    unsigned char unknown3;
+    unsigned char fixStatusFlag;
+    short int unknown4;
+    unsigned char xorMask;
+    short int sequenceNumber;
+} RawGPSData;
+
+typedef struct RawCompassData
+{
+    short int x_vector;
+    short int y_vector;
+    short int z_vector;
+} RawCompassData;
+
+typedef union struct_to_int
+{
+    RawGPSData gps_structure;
+    RawCompassData compass_structure;
+    uint8_t struct_as_int[GPS_PAYLOAD_LENGTH];
+} struct_to_int;
 
 gps_data_t gps_data;
+
+RawGPSData gps_data_raw;
 
 /**
  * Functions only to be used locally
  */
 static int __gps_parse(const int input);
 static void __updateCS(const int input);
-static void __gps_decode();
+static void __gps_decode(unsigned char messageID);
 
 int gps_init()
 {
@@ -55,12 +94,12 @@ int gps_init()
 
 int gps_getData()
 {
-    byte* buffer;
+    unsigned char* buffer;
     if(rc_uart_bytes_available(GPS_BUS))
     {
         rc_read_bytes(GPS_BUS, buffer, 1);
 
-        __gps_parse(gps_data)
+        __gps_parse(gps_data_raw);
     } 
 
     if (gps_data.gps_valid)
@@ -80,48 +119,48 @@ static int __gps_parse(const int input)
 {
     static int count;
     uint8_t checkSum[2];
-    static ParseState state = START_BYTE_1;
-    static byte messageID;
-    static byte messageLength;
+    static ParseState parseState = START_BYTE_1;
+    static unsigned char messageID;
+    static unsigned char messageLength;
     static unsigned char payload[PAYLOAD_SIZE];
 
-    switch (state)
+    switch (parseState)
     {
     case START_BYTE_1:
         if (input == GPS_STARTBYTE1)
-            state = START_BYTE_2;
+            parseState = START_BYTE_2;
         break;
         
     case START_BYTE_2:
         if (input == GPS_STARTBYTE2)
         {
-            state = MESSAGE_ID;
+            parseState = MESSAGE_ID;
             checkSum[0] = 0;
             checkSum[1] = 0;
         }
         else
-            state = START_BYTE_1;
+            parseState = START_BYTE_1;
         break;
         
     case MESSAGE_ID:
         messageID = input;
         checkSum[0] += input;
         checkSum[1] += checkSum[0];
-        state = VALIDATE_PAYLOAD;
+        parseState = VALIDATE_PAYLOAD;
         break;
         
     case VALIDATE_PAYLOAD:
-        if ((messageID == PAYLOAD_GPS && input == PAYLOAD_GPS_LEN)
-            || (messageID == PAYLOAD_COMPAS && input == PAYLOAD_COMPASS_LEN))
+        if ((messageID == PAYLOAD_GPS && input == GPS_PAYLOAD_LENGTH)
+            || (messageID == PAYLOAD_COMPASS && input == COMPASS_PAYLOAD_LENGTH))
         {
             messageLength = input;
             count = 0;
             checkSum[0] += input;
             checkSum[1] += checkSum[0];
-            state = RECIEVE_PAYLOAD;
+            parseState = RECIEVE_PAYLOAD;
         }
         else
-            state = START_BYTE_1;
+            parseState = START_BYTE_1;
         break;
         
     case RECIEVE_PAYLOAD:
@@ -130,39 +169,39 @@ static int __gps_parse(const int input)
         checkSum[1] += checkSum[0];
         if (count >= messageLength)
         {
-            state = CHECKSUM_1;
+            parseState = CHECKSUM_1;
         }
         break;
 
     case CHECKSUM_1:
         if (input == checkSum[0])
-            state = CHECKSUM_2;
+            parseState = CHECKSUM_2;
         else
-            state = START_BYTE_1;
+            parseState = START_BYTE_1;
         break;
 
     case CHECKSUM_2:
         if (input == checkSum[1])
-            state = DECODE_PAYLOAD;
+            parseState = DECODE_PAYLOAD;
         else
-            state = START_BYTE_1;
+            parseState = START_BYTE_1;
         break;
 
     case DECODE_PAYLOAD:
-        gps_data = *(gps_data_t*)payload;
-        state = START_BYTE_1;
-        __gps_decode();
+        gps_data_raw = *(gps_data_t*)payload;
+        parseState = START_BYTE_1;
+        __gps_decode(messageID);
     }
 
     return 0;
 }
 
-static void __gps_decode()
+static void __gps_decode(unsigned char messageID)
 {
     struct_to_int gps_union;
     static int16_t magXMax, magXMin, magYMax, magYMin;
 
-    if (msgId == PAYLOAD_GPS)
+    if (messageID == PAYLOAD_GPS)
     {
         uint8_t mask = 0;
         uint8_t mask_bits[8];
@@ -195,13 +234,13 @@ static void __gps_decode()
 
         gps_union.gps_structure = gps_data;
         
-        for(int i = 0; i < GPS_PAYLOAD_SIZE; i++)
+        for(int i = 0; i < GPS_PAYLOAD_LENGTH; i++)
             gps_union.struct_as_int[i] ^= mask;
 
         gps_data = gps_union.structure;
 
-
-
+        
+        if (gps_data_raw.fixType)
 
         switch (fixType)
         {
@@ -229,7 +268,7 @@ static void __gps_decode()
         // Check if gps is valid (> 4 satelites for 3D)
         gps_data.gps_valid = (gps_data.sat >= 4);
     }
-    else if (msgId == PAYLOAD_COMPASS)
+    else if (messageID == PAYLOAD_COMPASS)
     {
         uint8_t mask = payload[4];
         mask = (((mask ^ (mask >> 4)) & 0x0F) | ((mask << 3) & 0xF0)) ^

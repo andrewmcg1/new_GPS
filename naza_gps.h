@@ -1,20 +1,16 @@
-
-
-typedef uint8_t byte;
-
 #ifndef __NAZA_GPS__
 #define __NAZA_GPS__
 
 #include <stdint.h>
 
-#include <coordinates.h>
-
-typedef union struct_to_int
+enum _FixType
 {
-    gps_data gps_structure;
-    gps_compass_data compass_structure;
-    uint8_t struct_as_int[GPS_PAYLOAD_SIZE];
-} struct_to_int;
+    NO_FIX,
+    FIX_2D,
+    FIX_3D,
+    FIX_DGPS
+};
+typedef enum _FixType FixType;
 
 enum _ParseState
 {
@@ -27,40 +23,7 @@ enum _ParseState
     CHECKSUM_2,
     DECODE_PAYLOAD
 };
-typedef _ParseState ParseState
-
-typedef struct gps_data_t
-{
-    long int dateAndTime;
-    long int longitude;
-    long int latitude;
-    long int altitude;
-    long int horrizontalAccuracyEstimate;
-    long int verticalAccuracyEstimate;
-    long int unknown1;
-    long int NEDNorthVelocity;
-    long int NEDEashVelocity;
-    long int NEDDownVelocity;
-    short int positionDOP;
-    short int verticalDOP;
-    short int northingDOP;
-    short int eastingDOP;
-    byte numberOfSatalites;
-    byte unknown2;
-    byte fixType;
-    byte unknown3;
-    byte fixStatusFlag;
-    short int unknown4;
-    byte xorMask;
-    short int sequenceNumber;
-} gps_data_raw_t;
-
-typedef struct compass_data_raw_t
-{
-    short int x_vector;
-    short int y_vector;
-    short int z_vector;
-} compass_data_raw_t;
+typedef enum _ParseState ParseState;
 
 typedef struct gps_data_t
 {
