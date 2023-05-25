@@ -239,8 +239,10 @@ static void __gps_decode(unsigned char messageID)
 
         gps_data = gps_union.structure;
 
-        
-        if (gps_data_raw.fixType)
+        gps_data.sat ^= mask;
+        gps_data.unknown2 ^= mask;
+        gps_data.sequence ^= mask;
+
 
         switch (fixType)
         {
